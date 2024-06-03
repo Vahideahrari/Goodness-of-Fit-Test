@@ -1,0 +1,236 @@
+rm(list=ls())
+library(VGAM);library(reliaR);library(fdrtool);library(actuar)
+
+###########   P Inverse Rayleigh   ####################### 
+
+pInrr<-function(x,t){
+
+if(any(t<=0))
+stop("t must be positive")
+
+exp(-(t^2)/(x^2))
+}
+
+########### R Inverse Rayleigh   ##################### 
+
+rInrr <- function(n,t){
+if(any(t<=0))
+stop("t must be positive")
+u=runif(n,0,1)
+sqrt(-t^2/log(u))
+}
+
+
+###################  Pivotal Quantitiy    #############################
+T1=function(n,x){
+
+theta = ((1/n)*sum(x^(-2)))^(-0.5)
+#theta = ((1/(n-1))*sum(x^(-2)))^(-1)
+T01 = (2*theta^2)*sum(1/(x^2))
+return(T01)
+}
+####################   Quntile  DHJ           #######################
+T4=function(n,x){
+s=0
+theta = ((1/n)*sum(x^(-2)))^(-0.5)
+
+g1=function(x){
+(-log(x))^(-0.25)
+}
+g1=Vectorize(g1)
+
+
+for(i in 1:(n)){
+s=s+(x[i]^0.5)*(integrate(g1,(i-1)/n,i/n)$value)
+}
+#s=s+(x[1]^0.5)*integrate(g1,0,1/n)$value+ (x[n]^0.5)*integrate(g1,(n-1)/n,1)$value
+
+
+T02=1+(theta/mean(x))*(gamma(0.5))-(2*(theta^0.5)*s/mean(x))
+return(T02*mean(x)/theta)
+}
+#####################    CKL    #######################
+T3=function(n,x){
+s=0
+theta = ((1/n)*sum(x^(-2)))^(-0.5)
+s1 = sum(sapply(1:(n-1),function(i)  (i/n) * log(i/n) * (x[i+1]-x[i]) ))   
+s2 = sum(sapply(1:(n-1),function(i)  (i/n) *  ((1/x[i]) -(1/x[i+1])) ))
+T03=(s1 + (theta^2 * (s2+1/x[n])) - theta*gamma(0.5))/mean(x) +1
+return(T03)
+}
+
+
+#######################
+Quantile = function(n, alpha){
+QT3 = QT4 = D = V = A = W = U = SS = c()
+for(i in 1 :20000){
+x=sort(rInrr(n,1))
+theta = ((1/n)*sum(x^(-2)))^(-0.5)
+QT3[i] = T3(n,x)
+QT4[i] = T4(n,x)
+ 
+d1=(c(1:n)/n)-pInrr(x[c(1:n)], theta)
+d2=pInrr(x[c(1:n)], theta)-  ((c(1:n) - 1)/n)
+D[i]=max(d1,d2)
+V[i]=max(d1)+max(d2)
+A[i] =-n- mean((2*c(1:n)-1) * (log(pInrr(x, theta)) +
+log(1-pInrr(rev(x),theta))))
+d1w = (2*c(1:n)-1)/(2*n)- pInrr(x[c(1:n)], theta)
+W[i] = 1/(12*n) + sum(d1w^2)
+U[i] = W[i]-n*((mean(pInrr(x[c(1:n)],theta)) -0.5)^2)
+s01=abs(pInrr(x[c(1:n)], theta)-c(1:n)/n)
+s02=abs(pInrr(x[c(1:n)], theta)- ((c(1:n) - 1)/n))
+y=cbind(s01,s02)
+SS[i]=sum(apply(y,1,max))
+}
+qT3 = quantile(QT3,1-alpha)
+qT4 = quantile(QT4,1-alpha)
+
+qD = quantile(D,1-alpha)
+qV = quantile(V,1-alpha)
+qA = quantile(A,1-alpha)
+qW = quantile(W,1-alpha)
+qU = quantile(U,1-alpha)
+qSS = quantile(SS,1-alpha)
+q=c(qD,qV,qA,qW,qU,qSS,qT3,qT4)
+return(q)
+}
+##############################################################
+Power=function(n, alpha, df){
+q=Quantile(n, alpha)
+qD=q[1];qV=q[2];qA=q[3];qW=q[4];qU=q[5];qSS=q[6];qT3=q[7];qT4=q[8]
+QT1=QT3=QT4 =D=V=A=W=U=SS=c()
+for(i in 1:20000){
+if (df == 1) x = sort(rchisq(n,4))
+if (df == 2) x = sort(rweibull(n,2,1))
+if (df == 3) x=sort(rgamma(n,2, 1))
+if (df == 4) {w=runif(n); x=sort(log(1-(2*log(1-w))))}
+if (df == 5) {w=runif(n); x=sort((log(1-0.5*log(1-w)))^(1.1))}
+if (df == 6) x=sort(rbeta(n,2,1))
+if (df == 7) x = sort(rweibull(n,0.5,1))
+if (df == 8) x=sort(rgamma(n,0.5, 1))
+if (df == 9) x=sort(rlnorm(n,0,2))
+if (df == 10) {w=runif(n); x=sort((1-w)^(-1/(1.5))-1)}
+if (df == 11) {w=runif(n); x=sort(exp(-log(1-w))-1)}
+if (df == 12) x = sort(rlnorm(n,0,1.2))
+if (df == 13) x=sort(rbeta(n,1,0.5))
+if (df == 14)  {w=runif(n); x=sort(exp((-log(1-w))^(2/3))-1)}
+theta = ((1/n)*sum(x^(-2)))^(-0.5)
+QT1[i]=T1(n,x)
+QT3[i]=T3(n,x)
+QT4[i]=T4(n,x)
+d1=(c(1:n)/n)-pInrr(x[c(1:n)], theta)
+d2=pInrr(x[c(1 : n)], theta)-  ((c(1 : n) - 1)/n)
+D[i]=max(d1,d2)
+V[i]=max(d1)+max(d2)
+A[i] =-n- mean((2*c(1:n)-1) * (log(pInrr(x, theta)) +
+log(1-pInrr(rev(x),theta))))
+d1w = (2*c(1:n)-1)/(2*n)- pInrr(x[c(1:n)], theta)
+W[i] = 1/(12*n) + sum(d1w^2)
+U[i] = W[i]-n*((mean(pInrr(x[c(1:n)],theta)) -0.5)^2)
+s01=abs(pInrr(x[c(1:n)], theta)-c(1:n)/n)
+s02=abs(pInrr(x[c(1:n)], theta)- ((c(1:n) - 1)/n))
+y=cbind(s01,s02)
+SS[i]=sum(apply(y,1,max))
+}
+#print(QT1)
+b1 = qchisq(1-alpha/2,2*n) ; b2 = qchisq(alpha/2,2*n)
+qu0 = (QT1> b1 | QT1< b2)
+powT1 = mean(as.numeric(qu0))
+powT3 = mean(QT3>qT3)
+powT4=mean(QT4>qT4)
+powD=mean(D>qD)
+powV=mean(V>qV)
+powA=mean(A>qA)
+powW=mean(W>qW)
+powU=mean(U>qU)
+powSS=mean(SS>qSS)
+return(c("powD=",round(powD,3),"powV=",round(powV,3),"powA=",round(powA,3),"powW=",round(powW,3),"powU=",round(powU,3),"powSS=",round(powSS,3),"powT1=",round(powT1,3),"powT3=",round(powT3,3),"powT4=",round(powT4,3),"qD=",round(q[1],3),"qV=",round(q[2],3),"qA=",round(q[3],3),"qW=",round(q[4],3),"qU=",round(q[5],3),"qSS=",round(q[6],3),"qT3=",round(q[7],3),"qT4=",round(q[8],3)))
+}
+write(c(Power(5, 0.05, 1),"Power(5, 0.05, 0.5, LN(1))"),file="E:\\resultdist5.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(5, 0.05, 2),"Power(5, 0.05, 0.5, LN(0.8))"),file="E:\\resultdist5.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(5, 0.05, 3),"Power(5, 0.05, 0.5,LN(1.5))"),file="E:\\resultdist5.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(5, 0.05, 4),"Power(5, 0.05, 0.5,LN(0.5))"),file="E:\\resultdist5.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(5, 0.05, 5),"Power(5, 0.05, 0.5,HN)"),file="E:\\resultdist5.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(5, 0.05, 6),"Power(5, 0.05, 0.5,U)"),file="E:\\resultdist5.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(5, 0.05, 7),"Power(5, 0.05, 0.5,DH(1))"),file="E:\\resultdist5.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(5, 0.05, 8),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist5.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(5, 0.05, 9),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist5.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(5, 0.05, 10),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist5.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(5, 0.05, 11),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist5.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(5, 0.05, 12),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist5.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(5, 0.05, 13),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist5.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(5, 0.05, 14),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist5.txt",sep = "\t",ncolumns=600,append=T)
+
+
+
+write(c(Power(10, 0.05, 1),"Power(5, 0.05, 0.5, LN(1))"),file="E:\\resultdist0010.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(10, 0.05, 2),"Power(5, 0.05, 0.5, LN(0.8))"),file="E:\\resultdist0010.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(10, 0.05, 3),"Power(5, 0.05, 0.5,LN(1.5))"),file="E:\\resultdist0010.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(10, 0.05, 4),"Power(5, 0.05, 0.5,LN(0.5))"),file="E:\\resultdist0010.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(10, 0.05, 5),"Power(5, 0.05, 0.5,HN)"),file="E:\\resultdist0010.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(10, 0.05, 6),"Power(5, 0.05, 0.5,U)"),file="E:\\resultdist0010.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(10, 0.05, 7),"Power(5, 0.05, 0.5,DH(1))"),file="E:\\resultdist0010.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(10, 0.05, 8),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist0010.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(10, 0.05, 9),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist0010.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(10, 0.05, 10),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist0010.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(10, 0.05, 11),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist0010.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(10, 0.05, 12),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist0010.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(10, 0.05, 13),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist0010.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(10, 0.05, 14),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist0010.txt",sep = "\t",ncolumns=600,append=T)
+
+
+write(c(Power(15, 0.05, 1),"Power(5, 0.05, 0.5, LN(1))"),file="E:\\resultdist0015.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(15, 0.05, 2),"Power(5, 0.05, 0.5, LN(0.8))"),file="E:\\resultdist0015.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(15, 0.05, 3),"Power(5, 0.05, 0.5,LN(1.5))"),file="E:\\resultdist0015.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(15, 0.05, 4),"Power(5, 0.05, 0.5,LN(0.5))"),file="E:\\resultdist0015.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(15, 0.05, 5),"Power(5, 0.05, 0.5,HN)"),file="E:\\resultdist0015.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(15, 0.05, 6),"Power(5, 0.05, 0.5,U)"),file="E:\\resultdist0015.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(15, 0.05, 7),"Power(5, 0.05, 0.5,DH(1))"),file="E:\\resultdist0015.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(15, 0.05, 8),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist0015.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(15, 0.05, 9),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist0015.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(15, 0.05, 10),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist0015.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(15, 0.05, 11),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist0015.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(15, 0.05, 12),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist0015.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(15, 0.05, 13),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist0015.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(15, 0.05, 14),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist0015.txt",sep = "\t",ncolumns=600,append=T)
+
+
+
+
+write(c(Power(20, 0.05, 1),"Power(5, 0.05, 0.5, LN(1))"),file="E:\\resultdist20.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(20, 0.05, 2),"Power(5, 0.05, 0.5, LN(0.8))"),file="E:\\resultdist20.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(20, 0.05, 3),"Power(5, 0.05, 0.5,LN(1.5))"),file="E:\\resultdist20.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(20, 0.05, 4),"Power(5, 0.05, 0.5,LN(0.5))"),file="E:\\resultdist20.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(20, 0.05, 5),"Power(5, 0.05, 0.5,HN)"),file="E:\\resultdist20.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(20, 0.05, 6),"Power(5, 0.05, 0.5,U)"),file="E:\\resultdist20.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(20, 0.05, 7),"Power(5, 0.05, 0.5,DH(1))"),file="E:\\resultdist20.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(20, 0.05, 8),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist20.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(20, 0.05, 9),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist20.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(20, 0.05, 10),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist20.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(20, 0.05, 11),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist20.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(20, 0.05, 12),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist20.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(20, 0.05, 13),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist20.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(20, 0.05, 14),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist20.txt",sep = "\t",ncolumns=600,append=T)
+
+
+
+
+
+write(c(Power(30, 0.05, 1),"Power(5, 0.05, 0.5, LN(1))"),file="E:\\resultdist30.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(30, 0.05, 2),"Power(5, 0.05, 0.5, LN(0.8))"),file="E:\\resultdist30.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(30, 0.05, 3),"Power(5, 0.05, 0.5,LN(1.5))"),file="E:\\resultdist30.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(30, 0.05, 4),"Power(5, 0.05, 0.5,LN(0.5))"),file="E:\\resultdist30.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(30, 0.05, 5),"Power(5, 0.05, 0.5,HN)"),file="E:\\resultdist30.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(30, 0.05, 6),"Power(5, 0.05, 0.5,U)"),file="E:\\resultdist30.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(30, 0.05, 7),"Power(5, 0.05, 0.5,DH(1))"),file="E:\\resultdist30.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(30, 0.05, 8),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist30.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(30, 0.05, 9),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist30.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(30, 0.05, 10),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist30.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(30, 0.05, 11),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist30.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(30, 0.05, 12),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist30.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(30, 0.05, 13),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist30.txt",sep = "\t",ncolumns=600,append=T)
+write(c(Power(30, 0.05, 14),"Power(5, 0.05, 0.5,DH(1.5))"),file="E:\\resultdist30.txt",sep = "\t",ncolumns=600,append=T)
+
+
+
